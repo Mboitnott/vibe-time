@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vibe Time — Display</title>
+<style>
+  :root {
+    --bg: #000;
+    --fg: #fff;
+    --ok: #3ddc84;
+    --warn: #ffc93c;
+    --over: #ff4b4b;
+    --clock: #7fc8ff;
+    --msg-bg: #1a1a1a;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; height: 100%;
+    background: var(--bg); color: var(--fg);
+    font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+    overflow: hidden; user-select: none;
+  }
+  body.idle { cursor: none; }
+  #wrap {
+    height: 100%;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 2vh; padding: 3vh 3vw;
+  }
+  #label {
+    font-size: 4vh; letter-spacing: .3em; text-transform: uppercase;
+    opacity: .55; font-weight: 600;
+  }
+  #time {
+    font-weight: 700; line-height: 1;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    color: var(--ok);
+    transition: color .3s;
+  }
+  #time.warn  { color: var(--warn); }
+  #time.over  { color: var(--over); }
+  #time.clock { color: var(--clock); }
+  #time.paused { opacity: .6; }
+  #msg {
+    display: none;
+    max-width: 94vw; width: 94vw;
+    background: var(--msg-bg); border-left: 1.2vh solid var(--warn);
+    padding: 2.5vh 3vw; border-radius: 1vh;
+    font-size: 7vh; font-weight: 600; line-height: 1.15;
+    text-align: center; word-wrap: break-word; white-space: pre-wrap;
+  }
+  #msg.show { display: block; }
+  #msg.flash { animation: flash 1s steps(2, start) infinite; }
+  @keyframes flash { to { background: var(--warn); color: #000; } }
+  #status {
+    position: fixed; bottom: 1vh; right: 1.5vw;
+    font-size: 1.6vh; opacity: .35;
+  }
+  #hint {
+    position: fixed; top: 1vh; left: 50%; transform: translateX(-50%);
+    font-size: 1.8vh; opacity: .5; transition: opacity 1s;
+  }
+  body.idle #hint { opacity: 0; }
+  #footer {
+    position: fixed; bottom: 1vh; left: 1.5vw;
+    font-size: 1.6vh; opacity: .3; letter-spacing: .05em;
+  }
+</style>
+</head>
+<body>
+<div id="hint">Click anywhere for fullscreen</div>
+<div id="wrap">
+  <div id="label">Countdown</div>
+  <div id="time">00:00</div>
+  <div id="msg"></div>
+</div>
+<div id="status">waiting for control…</div>
+<div id="footer">Vibe Time v1.0.0</div>
+
+<script>
+const KEY = 'prod-timer-state';
+const WARN_MS = 60 * 1000;
+
+let state = null;
+let lastUpdate = 0;
+
+const $time = document.getElementById('time');
+const $label = document.getElementById('label');
+const $msg = document.getElementById('msg');
+const $status = document.getElementById('status');
+
+function fmtCountdown(ms) {
+  const over = ms < 0;
+  // Ceil while counting down so "0:00" only shows when time is truly up.
+  const total = over ? Math.floor(-ms / 1000) : Math.ceil(ms / 1000);
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  const pad = n => String(n).padStart(2, '0');
+  const body = h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`;
+  return (over ? '+' : '') + body;
+}
+
+function fmtClock(d) {
+  let h = d.getHours();
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  h = h % 12 || 12;
+  const pad = n => String(n).padStart(2, '0');
+  return `${h}:${pad(d.getMinutes())}:${pad(d.getSeconds())} ${ampm}`;
+}
+
+function remaining(s) {
+  return s.running ? s.endAt - Date.now() : s.remaining;
+}
+
+function fit() {
+  // Size the digits to fill the screen, leaving room for a message when present.
+  const len = Math.max($time.textContent.length, 5);
+  const hasMsg = $msg.classList.contains('show');
+  const byWidth = (innerWidth * 0.94) / (len * 0.6);
+  const byHeight = innerHeight * (hasMsg ? 0.42 : 0.7);
+  $time.style.fontSize = Math.min(byWidth, byHeight) + 'px';
+}
+
+function render() {
+  if (!state) { requestAnimationFrame(render); return; }
+
+  if (state.mode === 'clock') {
+    $label.textContent = 'Current Time';
+    $time.textContent = fmtClock(new Date());
+    $time.className = 'clock';
+  } else {
+    const ms = remaining(state);
+    $label.textContent = ms < 0 ? 'Over Time' : (state.running ? 'Countdown' : 'Paused');
+    $time.textContent = fmtCountdown(ms);
+    $time.className = ms < 0 ? 'over' : ms <= WARN_MS ? 'warn' : '';
+    if (!state.running) $time.classList.add('paused');
+  }
+
+  const text = (state.message || '').trim();
+  $msg.textContent = text;
+  $msg.classList.toggle('show', !!text);
+  $msg.classList.toggle('flash', !!text && !!state.flash);
+
+  fit();
+
+  const stale = Date.now() - lastUpdate > 3000;
+  $status.textContent = stale ? 'control disconnected' : '';
+
+  requestAnimationFrame(render);
+}
+
+function apply(next) {
+  if (!next) return;
+  state = next;
+  lastUpdate = Date.now();
+}
+
+// Receive updates via any of three channels; whichever works in this browser wins.
+window.addEventListener('message', e => {
+  if (e.data && e.data.type === 'state') apply(e.data.state);
+});
+let bc = null;
+try {
+  bc = new BroadcastChannel('prod-timer');
+  bc.onmessage = e => { if (e.data && e.data.type === 'state') apply(e.data.state); };
+} catch {}
+window.addEventListener('storage', e => {
+  if (e.key === KEY && e.newValue) { try { apply(JSON.parse(e.newValue)); } catch {} }
+});
+
+// Pick up the last known state immediately, then ask control for a fresh one.
+try { const saved = localStorage.getItem(KEY); if (saved) state = JSON.parse(saved); } catch {}
+const hello = { type: 'hello' };
+try { window.opener && window.opener.postMessage(hello, '*'); } catch {}
+try { bc && bc.postMessage(hello); } catch {}
+
+document.addEventListener('click', () => {
+  if (document.fullscreenElement) document.exitFullscreen();
+  else document.documentElement.requestFullscreen().catch(() => {});
+});
+
+let idleTimer;
+document.addEventListener('mousemove', () => {
+  document.body.classList.remove('idle');
+  clearTimeout(idleTimer);
+  idleTimer = setTimeout(() => document.body.classList.add('idle'), 2500);
+});
+idleTimer = setTimeout(() => document.body.classList.add('idle'), 4000);
+
+addEventListener('resize', fit);
+requestAnimationFrame(render);
+</script>
+</body>
+</html>

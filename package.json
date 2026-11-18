@@ -1,0 +1,74 @@
+{
+  "name": "vibe-time",
+  "productName": "Vibe Time",
+  "version": "1.0.0",
+  "description": "Production countdown timer with a control window and a confidence-monitor display.",
+  "main": "main.js",
+  "author": "Vibe Time",
+  "license": "UNLICENSED",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "dist:mac": "electron-builder --mac",
+    "dist:win": "electron-builder --win",
+    "dist": "electron-builder --mac --win"
+  },
+  "build": {
+    "appId": "com.vibetime.app",
+    "productName": "Vibe Time",
+    "files": [
+      "main.js",
+      "control.html",
+      "display.html"
+    ],
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "universal"
+          ]
+        }
+      ],
+      "category": "public.app-category.productivity",
+      "icon": "build/icon.png"
+    },
+    "dmg": {
+      "artifactName": "Vibe-Time-${version}-mac.${ext}"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.png",
+      "signAndEditExecutable": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "artifactName": "Vibe-Time-Setup-${version}.${ext}"
+    },
+    "portable": {
+      "artifactName": "Vibe-Time-${version}-portable.${ext}"
+    }
+  },
+  "devDependencies": {
+    "electron": "40.10.2",
+    "electron-builder": "26.18.1"
+  }
+}
